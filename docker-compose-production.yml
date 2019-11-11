@@ -1,0 +1,185 @@
+version: '3'
+services:
+    market-nginx:
+        image: ${REGISTRY_ADDRESS}/market-nginx:${IMAGE_TAG}
+        restart: always
+        depends_on:
+            - market-php-fpm
+        ports:
+            - "80:80"
+
+    market-php-fpm:
+        image: ${REGISTRY_ADDRESS}/market-php-fpm:${IMAGE_TAG}
+        restart: always
+        environment:
+            APP_SECRET: ${MARKET_APP_SECRET}
+            DATABASE_URL: pgsql://app:${MARKET_DB_PASSWORD}@market-postgres:5432/marketdb
+            REDIS_HOST: market-redis
+            REDIS_PASSWORD: ${MARKET_REDIS_PASSWORD}
+            MAILER_URL: ${MARKET_MAILER_URL}
+            MAILER_FROM_EMAIL: ${MARKET_MAILER_FROM_EMAIL}
+            MAILER_FROM_NAME: ${MARKET_MAILER_FROM_NAME}
+            OAUTH_FACEBOOK_SECRET: ${MARKET_OAUTH_FACEBOOK_SECRET}
+            STORAGE_BASE_URL: ${STORAGE_BASE_URL}
+            STORAGE_FTP_HOST: ${STORAGE_FTP_HOST}
+            STORAGE_FTP_USERNAME: ${STORAGE_FTP_USERNAME}
+            STORAGE_FTP_PASSWORD: ${STORAGE_FTP_PASSWORD}
+            MESSENGER_TRANSPORT_DSN: redis://market-queue-redis:6379/messages
+            CENTRIFUGO_WS_HOST: ${CENTRIFUGO_WS_HOST}
+            CENTRIFUGO_API_HOST: http://centrifugo:8000
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            OAUTH_ENCRYPTION_KEY: ${OAUTH_ENCRYPTION_KEY}
+        depends_on:
+            - market-postgres
+            - market-redis
+            - market-queue-redis
+            - centrifugo
+
+    market-php-cli:
+        image: ${REGISTRY_ADDRESS}/market-php-cli:${IMAGE_TAG}
+        environment:
+            APP_SECRET: ${MARKET_APP_SECRET}
+            DATABASE_URL: pgsql://app:${MARKET_DB_PASSWORD}@market-postgres:5432/marketdb
+            REDIS_HOST: market-redis
+            REDIS_PASSWORD: ${MARKET_REDIS_PASSWORD}
+            MAILER_URL: ${MARKET_MAILER_URL}
+            MAILER_FROM_EMAIL: ${MARKET_MAILER_FROM_EMAIL}
+            MAILER_FROM_NAME: ${MARKET_MAILER_FROM_NAME}
+            OAUTH_FACEBOOK_SECRET: ${MARKET_OAUTH_FACEBOOK_SECRET}
+            STORAGE_BASE_URL: ${STORAGE_BASE_URL}
+            STORAGE_FTP_HOST: ${STORAGE_FTP_HOST}
+            STORAGE_FTP_USERNAME: ${STORAGE_FTP_USERNAME}
+            STORAGE_FTP_PASSWORD: ${STORAGE_FTP_PASSWORD}
+            MESSENGER_TRANSPORT_DSN: redis://market-queue-redis:6379/messages
+            CENTRIFUGO_WS_HOST: ${CENTRIFUGO_WS_HOST}
+            CENTRIFUGO_API_HOST: http://centrifugo:8000
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            OAUTH_ENCRYPTION_KEY: ${OAUTH_ENCRYPTION_KEY}
+        depends_on:
+            - market-postgres
+            - market-redis
+            - market-queue-redis
+            - centrifugo
+
+    market-queue-worker:
+        image: ${REGISTRY_ADDRESS}/market-php-cli:${IMAGE_TAG}
+        restart: always
+        environment:
+            APP_SECRET: ${MARKET_APP_SECRET}
+            DATABASE_URL: pgsql://app:${MARKET_DB_PASSWORD}@market-postgres:5432/marketdb
+            REDIS_HOST: market-redis
+            REDIS_PASSWORD: ${MARKET_REDIS_PASSWORD}
+            MAILER_URL: ${MARKET_MAILER_URL}
+            MAILER_FROM_EMAIL: ${MARKET_MAILER_FROM_EMAIL}
+            MAILER_FROM_NAME: ${MARKET_MAILER_FROM_NAME}
+            OAUTH_FACEBOOK_SECRET: ${MARKET_OAUTH_FACEBOOK_SECRET}
+            STORAGE_BASE_URL: ${STORAGE_BASE_URL}
+            STORAGE_FTP_HOST: ${STORAGE_FTP_HOST}
+            STORAGE_FTP_USERNAME: ${STORAGE_FTP_USERNAME}
+            STORAGE_FTP_PASSWORD: ${STORAGE_FTP_PASSWORD}
+            MESSENGER_TRANSPORT_DSN: redis://market-queue-redis:6379/messages
+            CENTRIFUGO_WS_HOST: ${CENTRIFUGO_WS_HOST}
+            CENTRIFUGO_API_HOST: http://centrifugo:8000
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            OAUTH_ENCRYPTION_KEY: ${OAUTH_ENCRYPTION_KEY}
+        depends_on:
+            - market-postgres
+            - market-redis
+            - market-queue-redis
+            - centrifugo
+        command: sh -c "sleep 30 && php bin/console messenger:consume async -vv"
+
+    market-postgres:
+        image: ${REGISTRY_ADDRESS}/market-postgres:${IMAGE_TAG}
+        restart: always
+        volumes:
+            - market-postgres:/var/lib/postgresql/data
+        environment:
+            POSTGRES_USER: app
+            POSTGRES_PASSWORD: ${MARKET_DB_PASSWORD}
+            POSTGRES_DB: marketdb
+#        ports:
+#            - "54321:5432"
+
+
+    market-redis:
+        image: redis:5.0-alpine
+        restart: always
+        volumes:
+            - market-redis:/data
+        command:
+            - 'redis-server'
+            - '--databases 2'
+            - '--save 900 1'
+            - '--save 300 10'
+            - '--save 60 10000'
+            - '--requirepass ${MARKET_REDIS_PASSWORD}'
+
+    market-queue-redis:
+        image: redis:5.0-alpine
+        restart: always
+        volumes:
+            - market-queue-redis:/data
+
+    storage-nginx:
+        image: ${REGISTRY_ADDRESS}/storage-nginx:${IMAGE_TAG}
+        restart: always
+        volumes:
+            - ./storage:/app
+        ports:
+            - "8081:80"
+
+    storage-ftp:
+        image: stilliard/pure-ftpd
+        restart: always
+        environment:
+            FTP_USER_NAME: ${STORAGE_FTP_USERNAME}
+            FTP_USER_PASS: ${STORAGE_FTP_PASSWORD}
+            FTP_USER_HOME: ${STORAGE_FTP_USER_HOME}
+        volumes:
+            - ./storage/public:/app
+
+    centrifugo:
+        image: ${REGISTRY_ADDRESS}/centrifugo:${IMAGE_TAG}
+        restart: always
+        ulimits:
+            nofile:
+                soft: 65536
+                hard: 65536
+        environment:
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+        ports:
+            - "8000:8000"
+        command: centrifugo --admin --admin_insecure
+
+
+    market-adminer:
+        image: adminer
+        restart: always
+        ports:
+            - "8085:8080"
+
+    market-pgadmin:
+        image: dpage/pgadmin4:latest
+        restart: always
+        depends_on:
+            - market-postgres
+        environment:
+            PGADMIN_DEFAULT_EMAIL: user@domain.com
+            PGADMIN_DEFAULT_PASSWORD: secretas
+        volumes:
+            - market-pgadmin-data:/var/lib/pgadmin
+        ports:
+            - "8086:80"
+
+
+volumes:
+    market-postgres:
+    market-redis:
+    market-queue-redis:
+    market-pgadmin-data:
+
